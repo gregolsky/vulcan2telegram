@@ -1,0 +1,14 @@
+{
+  "name": "vulcan-telegram",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env src/run.mjs",
+    "dry-run": "node --env-file=.env src/run.mjs --send-existing --dry-run",
+    "test-telegram": "node --env-file=.env src/run.mjs --test-telegram",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
