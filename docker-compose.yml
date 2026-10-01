@@ -1,0 +1,12 @@
+services:
+  vulcan:
+    image: ghcr.io/gregolsky/vulcan2telegram:latest
+    build: .
+    env_file: .env
+    environment:
+      CHROMIUM_PATH: "" # the image bundles Chromium; ignore a host-specific path from .env
+    volumes:
+      - ./data:/data
+    init: true # proper SIGTERM handling for the sh loop
+    ipc: host # recommended by Playwright for Chromium stability
+    restart: unless-stopped
