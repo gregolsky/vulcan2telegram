@@ -1,14 +1,11 @@
 import { spawn } from 'node:child_process';
 import { DIGEST_HOUR, DIGEST_DAYS, DIGEST_MODEL } from '../config.mjs';
-import { getUczen } from '../uczen.mjs';
 import { esc, htmlToText } from '../text.mjs';
-import { parseExams, mondayOf } from './exams.mjs';
+import { loadExams } from './exams.mjs';
 import { recentMessages } from './inbox.mjs';
-import { parsePlan, groupByDay, formatPlan } from './plan.mjs';
+import { loadPlan, groupByDay, formatPlan } from './plan.mjs';
+import { TZ, ymd, addDays } from '../dates.mjs';
 
-const TZ = 'Europe/Warsaw';
-const ymd = (d) => d.toLocaleDateString('sv', { timeZone: TZ });
-const addDays = (s, n) => { const d = new Date(`${s}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 /** Due on the configured weekdays, from DIGEST_HOUR on, once per day. */
 export function isDue(now, last, { days = DIGEST_DAYS, hour = DIGEST_HOUR } = {}) {
@@ -25,7 +22,7 @@ export function toTelegramHtml(text) {
 export function buildPrompt({ today, messages, exams, planChanges = [] }) {
   const msgs = messages.map(m =>
     `--- ${m.date.slice(0, 10)} | od: ${m.sender} | dla: ${m.children.join(', ')} | temat: ${m.subject || '(bez tematu)'}\n${m.body || '(brak treści)'}` +
-    (m.attachments.length ? `\nZałączniki: ${m.attachments.join(', ')}` : '')).join('\n\n') || '(brak wiadomości)';
+    (m.attachments.length ? `\nZałączniki: ${m.attachments.map(a => a.name).join(', ')}` : '')).join('\n\n') || '(brak wiadomości)';
   const ex = exams.map(e => `- ${e.date} | ${e.student} (${e.className}) | ${e.kindLabel}: ${e.subject}${e.description ? ` | zakres: ${e.description}` : ''}`).join('\n') || '(brak sprawdzianów)';
   const plan = planChanges.map(d => htmlToText(formatPlan(d))).join('\n\n') || '(brak zmian)';
   return `Dziś jest ${today}. Przygotuj dla rodzica krótkie podsumowanie "co potrzeba na kolejne 7 dni i na co zwrócić uwagę", osobno dla każdego dziecka (imię i klasa jako nagłówek), a na końcu sekcja "Dla wszystkich" dla spraw wspólnych.
@@ -57,6 +54,8 @@ export function runClaude(prompt, { bin = 'claude', timeoutMs = 300_000 } = {}) 
     const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '';
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('claude timed out')); }, timeoutMs);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', d => (out += d));
     child.stderr.on('data', d => (err += d));
     child.on('error', e => { clearTimeout(timer); reject(new Error(`claude: ${e.message}`)); });
@@ -73,19 +72,31 @@ export function runClaude(prompt, { bin = 'claude', timeoutMs = 300_000 } = {}) 
 export async function buildDigest(session, { run = runClaude, now = new Date() } = {}) {
   const today = ymd(now);
   const until = addDays(today, 7);
-  const { students, call } = await getUczen(session);
-  const exams = [];
-  for (const s of students) {
-    for (let w = 0; w < 2; w++) {
-      exams.push(...parseExams(await call(s, 'Sprawdziany.mvc/Get', { data: `${mondayOf(today, w)}T00:00:00`, rokSzkolny: s.year }), s));
-    }
-  }
-  const upcoming = exams.filter(e => e.date >= today && e.date <= until).sort((a, b) => a.date.localeCompare(b.date));
-  const changes = [];
-  for (const s of students) {
-    for (let w = 0; w < 2; w++) changes.push(...parsePlan(await call(s, 'PlanZajec.mvc/Get', { data: `${mondayOf(today, w)}T00:00:00` }), s));
-  }
-  const planChanges = groupByDay(changes.filter(c => c.date >= today && c.date <= until));
+  const inWindow = (c) => c.date >= today && c.date <= until;
+  const exams = (await loadExams(session, today)).filter(inWindow).sort((a, b) => a.date.localeCompare(b.date));
+  const planChanges = groupByDay((await loadPlan(session, today)).filter(inWindow));
   const messages = await recentMessages(session, 7);
-  return run(buildPrompt({ today, messages, exams: upcoming, planChanges }));
+  return run(buildPrompt({ today, messages, exams, planChanges }));
+}
+
+/**
+ * Posts the weekly summary when it is due (or `force`d). Without a Claude token it only logs,
+ * once a day. `skip` and `dryRun` suppress the scheduled run (not a forced one).
+ */
+export async function maybeDigest({ session, state, persist, deliver, force, skip, dryRun, enabled, now = new Date(), log = console.log, build = buildDigest }) {
+  if (!(force || (!skip && !dryRun && isDue(now, state.digest?.last)))) return;
+  const today = ymd(now);
+  if (!force && !enabled) {
+    if (state.digest?.skipLogged !== today) {
+      log(`${now.toISOString()} [digest] skipped: CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) not set, weekly summary unavailable`);
+      state.digest = { ...state.digest, skipLogged: today };
+      persist();
+    }
+    return;
+  }
+  const text = await build(session, { now });
+  await deliver(`📋 <b>Podsumowanie na kolejne 7 dni</b>\n\n${toTelegramHtml(text)}`, '');
+  state.digest = { ...state.digest, last: today };
+  persist();
+  log(`${now.toISOString()} [digest] sent`);
 }

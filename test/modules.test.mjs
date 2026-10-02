@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseGrades, formatGrade } from '../src/modules/grades.mjs';
-import { parseExams, formatExam, mondayOf } from '../src/modules/exams.mjs';
+import { parseExams, formatExam } from '../src/modules/exams.mjs';
+import { mondayOf } from '../src/dates.mjs';
 import { currentPeriod, toStudent } from '../src/uczen.mjs';
 import { migrateState } from '../src/state.mjs';
 

@@ -1,9 +1,9 @@
 import { THREADS, EXAMS_WEEKS } from '../config.mjs';
-import { getUczen } from '../uczen.mjs';
-import { esc } from '../text.mjs';
+import { collectWeeks } from '../uczen.mjs';
+import { esc, cleanTeacher } from '../text.mjs';
+import { ymd, plDate } from '../dates.mjs';
 
 const KINDS = { 2: 'Kartkówka', 3: 'Sprawdzian' };
-const cleanTeacher = (s = '') => s.replace(/\s*\[.*?\]\s*$/, '').trim();
 
 /** Flattens one Sprawdziany.mvc response (a week, grouped by day) into items. */
 export function parseExams(data, student) {
@@ -25,9 +25,7 @@ export function parseExams(data, student) {
 }
 
 export function formatExam(e) {
-  const when = new Date(`${e.date}T12:00:00Z`).toLocaleDateString('pl-PL', {
-    timeZone: 'Europe/Warsaw', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const when = plDate(e.date);
   return [
     `📝 <b>${esc(e.student)} (${esc(e.className)})</b> — ${esc(e.kindLabel)}: <b>${esc(e.subject)}</b>`,
     `📅 Termin: <b>${esc(when)}</b>`,
@@ -36,23 +34,18 @@ export function formatExam(e) {
   ].filter(Boolean).join('\n');
 }
 
-/** Monday (YYYY-MM-DD) of the week containing `ymd`, plus `weeks` weeks. */
-export function mondayOf(ymd, weeks = 0) {
-  const d = new Date(`${ymd}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) + weeks * 7);
-  return d.toISOString().slice(0, 10);
+const EXAM_WEEKS = Math.max(EXAMS_WEEKS, 2); // the weekly digest looks 7 days ahead
+
+/** Exams of the next weeks for all students, fetched once per session (shared with the digest). */
+export function loadExams(session, today) {
+  return (session.exams ??= collectWeeks(session, {
+    path: 'Sprawdziany.mvc/Get', weeks: EXAM_WEEKS, today,
+    body: s => ({ rokSzkolny: s.year }), parse: parseExams,
+  }));
 }
 
-async function fetch(session, { isSeen }) {
-  const { students, call } = await getUczen(session);
-  const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Warsaw' });
-  const all = [];
-  for (const s of students) {
-    for (let w = 0; w < EXAMS_WEEKS; w++) {
-      const data = await call(s, 'Sprawdziany.mvc/Get', { data: `${mondayOf(today, w)}T00:00:00`, rokSzkolny: s.year });
-      all.push(...parseExams(data, s));
-    }
-  }
+async function fetch(session, { isSeen, now = new Date() }) {
+  const all = await loadExams(session, ymd(now));
   return {
     allKeys: all.flatMap(i => i.keys),
     fresh: all.filter(i => i.keys.some(k => !isSeen(k))).sort((a, b) => a.date.localeCompare(b.date)),

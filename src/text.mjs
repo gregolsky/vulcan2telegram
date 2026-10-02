@@ -1,5 +1,8 @@
 const ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
 
+/** "Kowalski Jan [KJ]" -> "Kowalski Jan" (drops the bracketed teacher code). */
+export const cleanTeacher = (s = '') => s.replace(/\s*\[.*?\]\s*/g, ' ').trim();
+
 /** Escapes text for Telegram's HTML parse mode. */
 export const esc = (s = '') => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -17,7 +20,7 @@ export function htmlToText(html = '') {
     .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
       if (e[0] === '#') {
         const n = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+        return Number.isInteger(n) && n >= 0 && n <= 0x10FFFF ? String.fromCodePoint(n) : m;
       }
       return ENTITIES[e.toLowerCase()] ?? m;
     })

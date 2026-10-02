@@ -3,8 +3,8 @@ const env = (k, d = '') => process.env[k] || d;
 export const USERNAME = env('VULCAN_USERNAME');
 export const PASSWORD = env('VULCAN_PASSWORD');
 export const PORTAL_URL = env('VULCAN_URL').replace(/\/$/, '');
-export const SYMBOL = PORTAL_URL.split('/').pop();
-export const SCHOOL_UNIT_ID = env('VULCAN_SCHOOL_UNIT_ID');
+const SYMBOL = PORTAL_URL.split('/').pop();
+const SCHOOL_UNIT_ID = env('VULCAN_SCHOOL_UNIT_ID');
 export const WIADOMOSCI_BASE = `https://uonetplus-wiadomosciplus.vulcan.net.pl/${SYMBOL}`;
 export const UCZEN_BASE = `https://uonetplus-uczen.vulcan.net.pl/${SYMBOL}/${SCHOOL_UNIT_ID}`;
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { htmlToText } from '../src/text.mjs';
+import { htmlToText, cleanTeacher, esc } from '../src/text.mjs';
 import { cleanSender, childName, groupCopies, formatMessage } from '../src/modules/inbox.mjs';
 import { chunk } from '../src/telegram.mjs';
 
@@ -84,4 +84,15 @@ test('formatMessage includes header, body and attachments; handles empty body', 
   assert.match(esc, /a&amp;b\.pdf\n {2}https:\/\/x\/\?a=1&amp;b=2/);
   assert.match(formatMessage({ ...base, body: '' }), /\(brak treści\)/);
   assert.match(formatMessage({ ...base, subject: '' }), /\(bez tematu\)/);
+});
+
+test('htmlToText leaves out-of-range numeric entities alone instead of throwing', () => {
+  assert.equal(htmlToText('a &#99999999; b &#x110000; c &#0; d'), 'a &#99999999; b &#x110000; c \u0000 d');
+});
+
+test('cleanTeacher drops the bracketed code anywhere; esc escapes the three HTML characters', () => {
+  assert.equal(cleanTeacher('Kowalska Anna [KA]'), 'Kowalska Anna');
+  assert.equal(cleanTeacher('Kowalska [KA] Anna'), 'Kowalska Anna');
+  assert.equal(cleanTeacher(undefined), '');
+  assert.equal(esc('a < b & c > d'), 'a &lt; b &amp; c &gt; d');
 });

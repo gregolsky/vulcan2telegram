@@ -1,16 +1,16 @@
 import { THREADS } from '../config.mjs';
-import { getUczen } from '../uczen.mjs';
-import { htmlToText, esc } from '../text.mjs';
-import { mondayOf } from './exams.mjs';
+import { collectWeeks } from '../uczen.mjs';
+import { htmlToText, esc, cleanTeacher } from '../text.mjs';
+import { ymd, plDate } from '../dates.mjs';
 
 const PLAN_WEEKS = 2; // this week and the next
-const cleanTeacher = (s = '') => s.replace(/\s*\[.*?\]\s*/g, ' ').trim();
 const text = (html = '') => htmlToText(html).replace(/\s+/g, ' ').trim();
 
+/** 'sub' | 'cancel' | 'change', or null for a plain lesson (no highlight class and no note). */
 function kindOf(cls, note) {
   if (/^zastępstwo/i.test(note) || /x-treelabel-zas/.test(cls)) return 'sub';
   if (/x-treelabel-inv/.test(cls) || /nieobecność|odwoł|zwolnion/i.test(note)) return 'cancel';
-  return 'change';
+  return note ? 'change' : null;
 }
 
 /**
@@ -21,28 +21,23 @@ function kindOf(cls, note) {
 export function parsePlan(data, student) {
   const dates = (data?.Headers ?? []).slice(1).map(h => h.Text.match(/(\d\d)\.(\d\d)\.(\d{4})/)).map(m => m && `${m[3]}-${m[2]}-${m[1]}`);
   const items = [];
-  for (const row of data?.Rows ?? []) {
-    const [lessonCell, ...days] = row;
+  for (const [lessonCell, ...days] of data?.Rows ?? []) {
     const [lesson, from, to] = (lessonCell?.Description ?? '').split(/<br\s*\/?>/).map(s => s.trim());
-    days.forEach((cell, i) => {
+    for (const [i, cell] of days.entries()) {
       for (const [, inner] of (cell?.Description ?? '').matchAll(/<div[^>]*>([\s\S]*?)<\/div>/g)) {
-        const spans = [...inner.matchAll(/<span([^>]*)>([\s\S]*?)<\/span>/g)];
-        const note = text((inner.slice(inner.lastIndexOf('</span>') + 7).match(/\(([^)]*)\)/) ?? [])[1] ?? '');
-        const cls = spans[0]?.[1] ?? '';
-        if (!dates[i] || !spans.length || (!note && !/x-treelabel-(zas|inv)/.test(cls))) continue;
-        const parts = spans.map(s => text(s[2]));
-        const [subject, ...rest] = parts;
-        const teacher = cleanTeacher(rest.at(-1) ?? '');
-        const room = rest.slice(0, -1).filter(Boolean).at(-1) ?? '';
-        const kind = kindOf(cls, note);
+        const [subject, ...rest] = [...inner.matchAll(/<span([^>]*)>([\s\S]*?)<\/span>/g)].map(m => ({ cls: m[1], text: text(m[2]) }));
+        const note = text(inner.split('</span>').at(-1).match(/\(([^)]*)\)/)?.[1]);
+        const kind = subject && dates[i] && kindOf(subject.cls, note);
+        if (!kind) continue;
         const subTeacher = kind === 'sub' ? cleanTeacher(note.replace(/^zastępstwo:\s*/i, '')) : '';
         items.push({
-          student: student.firstName, className: student.className, date: dates[i],
-          lesson, from, to, subject, room, teacher, kind, note, subTeacher,
+          student: student.firstName, className: student.className, date: dates[i], lesson, from, to,
+          subject: subject.text, room: rest.slice(0, -1).map(r => r.text).filter(Boolean).at(-1) ?? '',
+          teacher: cleanTeacher(rest.at(-1)?.text), kind, note, subTeacher,
           keys: [`p:${student.idUczen}:${dates[i]}:${lesson}:${note}`],
         });
       }
-    });
+    }
   }
   return items;
 }
@@ -73,22 +68,18 @@ function formatLesson(l) {
 }
 
 export function formatPlan(d) {
-  const when = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('pl-PL', {
-    timeZone: 'Europe/Warsaw', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const when = plDate(d.date);
   return [`🔄 <b>${esc(d.student)} (${esc(d.className)})</b> — <b>${esc(when)}</b>`, ...d.lessons.map(formatLesson)].join('\n');
 }
 
-async function fetch(session, { isSeen }) {
-  const { students, call } = await getUczen(session);
-  const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Warsaw' });
-  const all = [];
-  for (const s of students) {
-    for (let w = 0; w < PLAN_WEEKS; w++) {
-      const data = await call(s, 'PlanZajec.mvc/Get', { data: `${mondayOf(today, w)}T00:00:00` });
-      all.push(...parsePlan(data, s));
-    }
-  }
+/** Schedule changes of this and next week for all students, fetched once per session (shared with the digest). */
+export function loadPlan(session, today) {
+  return (session.plan ??= collectWeeks(session, { path: 'PlanZajec.mvc/Get', weeks: PLAN_WEEKS, today, parse: parsePlan }));
+}
+
+async function fetch(session, { isSeen, now = new Date() }) {
+  const today = ymd(now);
+  const all = await loadPlan(session, today);
   // Only upcoming changes are announced; past ones are recorded as seen.
   const fresh = all.filter(c => c.date >= today && c.keys.some(k => !isSeen(k)));
   return { allKeys: all.flatMap(i => i.keys), fresh: groupByDay(fresh) };

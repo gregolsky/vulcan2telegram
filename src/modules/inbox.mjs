@@ -45,60 +45,68 @@ async function api(ctx, path) {
   return res.json();
 }
 
-// SSO hop to the Wiadomości Plus host; once per session.
-function openHost(session) {
-  return (session.inboxHost ??= (async () => {
-    await session.page.goto(`${WIADOMOSCI_BASE}/LoginEndpoint.aspx`, { waitUntil: 'networkidle' });
-    await session.page.waitForTimeout(3000);
-  })());
+const PAGE_SIZE = 50;
+const MAX_PAGES = 10;
+
+/**
+ * Inbox rows (one per child mailbox copy of each message), newest first. Always reads the newest
+ * page; keeps paging back (by message id) until `enough(page)` says the older ones are not needed,
+ * so a burst of messages or a long downtime does not push messages off the first page unseen.
+ */
+async function listRows(session, enough = () => true) {
+  await session.ensureWiadomosci();
+  const rows = [];
+  const keys = new Set();
+  let cursor = 0;
+  for (let i = 0; i < MAX_PAGES; i++) {
+    const page = await api(session.ctx, `Odebrane?idLastWiadomosc=${cursor}&pageSize=${PAGE_SIZE}`);
+    if (!Array.isArray(page)) throw new Error('Inbox API returned an unexpected response');
+    const added = page.filter(r => !keys.has(r.apiGlobalKey)); // the cursor row is repeated on the next page
+    added.forEach(r => keys.add(r.apiGlobalKey));
+    rows.push(...added);
+    if (!added.length || page.length < PAGE_SIZE || enough(page)) break;
+    cursor = page.at(-1).id;
+  }
+  return rows;
+}
+
+/** Full message (with body) for one group of per-child copies. Does not mark it as read. */
+async function toMessage(session, g) {
+  const d = await api(session.ctx, `WiadomoscSzczegoly?apiGlobalKey=${encodeURIComponent(g.rows[0].apiGlobalKey)}`);
+  return {
+    keys: g.rows.map(r => r.apiGlobalKey),
+    sender: cleanSender(d.nadawca || g.sender),
+    subject: d.temat || g.subject,
+    date: d.data || g.rows[0].data,
+    children: [...new Set(g.rows.map(r => childName(r.skrzynka)))],
+    body: htmlToText(d.tresc),
+    attachments: (d.zalaczniki ?? []).map(a => ({ name: a.nazwaPliku, url: a.url })),
+  };
 }
 
 /**
- * Reads the newest inbox page via the portal's JSON API and fetches bodies only for groups
- * with an unseen key. Does not mark messages as read.
+ * Reads the inbox (paging back until a fully seen page) and fetches bodies only for groups that are entirely unseen.
+ * A group where some copies were already seen (a copy for another child arrived late) is not
+ * posted again; its new keys are just recorded (`silent`).
  */
-async function fetch(session, { isSeen, seedOnly }) {
-  await openHost(session);
-  const rows = await api(session.ctx, 'Odebrane?idLastWiadomosc=0&pageSize=50');
-  if (!Array.isArray(rows) || !rows.length) throw new Error('Inbox API returned no messages');
-  const allKeys = rows.map(r => r.apiGlobalKey);
-  if (seedOnly) return { allKeys, fresh: [] };
-
+async function fetch(session, { isSeen }) {
+  const rows = await listRows(session, page => page.every(r => isSeen(r.apiGlobalKey)));
   const fresh = [];
   for (const g of groupCopies(rows)) {
-    if (g.rows.every(r => isSeen(r.apiGlobalKey))) continue;
-    const d = await api(session.ctx, `WiadomoscSzczegoly?apiGlobalKey=${encodeURIComponent(g.rows[0].apiGlobalKey)}`);
-    fresh.push({
-      keys: g.rows.map(r => r.apiGlobalKey),
-      sender: cleanSender(d.nadawca || g.sender),
-      subject: d.temat || g.subject,
-      date: d.data || g.rows[0].data,
-      children: [...new Set(g.rows.map(r => childName(r.skrzynka)))],
-      body: htmlToText(d.tresc),
-      attachments: (d.zalaczniki ?? []).map(a => ({ name: a.nazwaPliku, url: a.url })),
-    });
+    const unseen = g.rows.filter(r => !isSeen(r.apiGlobalKey));
+    if (!unseen.length) continue;
+    if (unseen.length < g.rows.length) fresh.push({ keys: unseen.map(r => r.apiGlobalKey), silent: true });
+    else fresh.push(await toMessage(session, g));
   }
-  return { allKeys, fresh };
+  return { allKeys: rows.map(r => r.apiGlobalKey), fresh };
 }
 
-/** Messages from the last `days` days with bodies (newest inbox page only), oldest first. Read-only. */
+/** Messages of the last `days` days with bodies, oldest first. Read-only. */
 export async function recentMessages(session, days) {
-  await openHost(session);
-  const rows = await api(session.ctx, 'Odebrane?idLastWiadomosc=0&pageSize=50');
-  if (!Array.isArray(rows)) throw new Error('Inbox API returned no list');
   const cutoff = Date.now() - days * 86_400_000;
   const out = [];
-  for (const g of groupCopies(rows).filter(g => g.t >= cutoff)) {
-    const d = await api(session.ctx, `WiadomoscSzczegoly?apiGlobalKey=${encodeURIComponent(g.rows[0].apiGlobalKey)}`);
-    out.push({
-      sender: cleanSender(d.nadawca || g.sender),
-      subject: d.temat || g.subject,
-      date: d.data || g.rows[0].data,
-      children: [...new Set(g.rows.map(r => childName(r.skrzynka)))],
-      body: htmlToText(d.tresc),
-      attachments: (d.zalaczniki ?? []).map(a => a.nazwaPliku),
-    });
-  }
+  const rows = await listRows(session, page => page.some(r => new Date(r.data).getTime() < cutoff));
+  for (const g of groupCopies(rows).filter(g => g.t >= cutoff)) out.push(await toMessage(session, g));
   return out;
 }
 

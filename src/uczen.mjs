@@ -1,9 +1,8 @@
 import { UCZEN_BASE } from './config.mjs';
-
-const today = () => new Date().toLocaleDateString('sv', { timeZone: 'Europe/Warsaw' }); // YYYY-MM-DD
+import { ymd, mondayOf } from './dates.mjs';
 
 /** The term (okres) containing `date`, falling back to the last one. */
-export function currentPeriod(okresy, date = today()) {
+export function currentPeriod(okresy, date = ymd()) {
   return okresy.find(o => o.DataOd.slice(0, 10) <= date && date <= o.DataDo.slice(0, 10)) ?? okresy.at(-1);
 }
 
@@ -18,7 +17,9 @@ export function toStudent(s) {
   };
 }
 
-async function load({ ctx, page }) {
+async function load(session) {
+  const { ctx, page } = session;
+  await session.ensureWiadomosci?.();
   // The app's own first .mvc request carries the anti-forgery headers we must replay.
   const first = page.waitForRequest(r => r.url().includes('.mvc'), { timeout: 30_000 });
   await page.goto(`${UCZEN_BASE}/App`, { waitUntil: 'networkidle' });
@@ -58,4 +59,16 @@ async function load({ ctx, page }) {
 /** Shared per session: one page load, used by both grades and exams. */
 export function getUczen(session) {
   return (session.uczen ??= load(session));
+}
+
+/** Calls a per-week endpoint for every student and each of `weeks` weeks, parsing each response. */
+export async function collectWeeks(session, { path, weeks, today, body = () => ({}), parse }) {
+  const { students, call } = await getUczen(session);
+  const out = [];
+  for (const s of students) {
+    for (let w = 0; w < weeks; w++) {
+      out.push(...parse(await call(s, path, { data: `${mondayOf(today, w)}T00:00:00`, ...body(s) }), s));
+    }
+  }
+  return out;
 }
