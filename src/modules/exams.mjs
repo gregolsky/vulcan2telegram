@@ -1,5 +1,6 @@
 import { THREADS, EXAMS_WEEKS } from '../config.mjs';
 import { getUczen } from '../uczen.mjs';
+import { esc } from '../text.mjs';
 
 const KINDS = { 2: 'Kartkówka', 3: 'Sprawdzian' };
 const cleanTeacher = (s = '') => s.replace(/\s*\[.*?\]\s*$/, '').trim();
@@ -28,10 +29,10 @@ export function formatExam(e) {
     timeZone: 'Europe/Warsaw', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
   return [
-    `📝 ${e.student} (${e.className}) — ${e.kindLabel}: ${e.subject}`,
-    `Termin: ${when}`,
-    e.description ? `Zakres: ${e.description}` : null,
-    e.teacher ? `Nauczyciel: ${e.teacher}` : null,
+    `📝 <b>${esc(e.student)} (${esc(e.className)})</b> — ${esc(e.kindLabel)}: <b>${esc(e.subject)}</b>`,
+    `📅 Termin: <b>${esc(when)}</b>`,
+    e.description ? `📚 Zakres: ${esc(e.description)}` : null,
+    e.teacher ? `🧑‍🏫 Nauczyciel: ${esc(e.teacher)}` : null,
   ].filter(Boolean).join('\n');
 }
 

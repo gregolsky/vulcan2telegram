@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { DIGEST_HOUR, DIGEST_DAYS, DIGEST_MODEL } from '../config.mjs';
 import { getUczen } from '../uczen.mjs';
+import { esc, htmlToText } from '../text.mjs';
 import { parseExams, mondayOf } from './exams.mjs';
 import { recentMessages } from './inbox.mjs';
 import { parsePlan, groupByDay, formatPlan } from './plan.mjs';
@@ -18,7 +19,7 @@ export function isDue(now, last, { days = DIGEST_DAYS, hour = DIGEST_HOUR } = {}
 
 /** Escapes the text for Telegram's HTML mode and turns **bold** into <b>; an unpaired ** stays literal. */
 export function toTelegramHtml(text) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  return esc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 }
 
 export function buildPrompt({ today, messages, exams, planChanges = [] }) {
@@ -26,7 +27,7 @@ export function buildPrompt({ today, messages, exams, planChanges = [] }) {
     `--- ${m.date.slice(0, 10)} | od: ${m.sender} | dla: ${m.children.join(', ')} | temat: ${m.subject || '(bez tematu)'}\n${m.body || '(brak treści)'}` +
     (m.attachments.length ? `\nZałączniki: ${m.attachments.join(', ')}` : '')).join('\n\n') || '(brak wiadomości)';
   const ex = exams.map(e => `- ${e.date} | ${e.student} (${e.className}) | ${e.kindLabel}: ${e.subject}${e.description ? ` | zakres: ${e.description}` : ''}`).join('\n') || '(brak sprawdzianów)';
-  const plan = planChanges.map(formatPlan).join('\n\n') || '(brak zmian)';
+  const plan = planChanges.map(d => htmlToText(formatPlan(d))).join('\n\n') || '(brak zmian)';
   return `Dziś jest ${today}. Przygotuj dla rodzica krótkie podsumowanie "co potrzeba na kolejne 7 dni i na co zwrócić uwagę", osobno dla każdego dziecka (imię i klasa jako nagłówek), a na końcu sekcja "Dla wszystkich" dla spraw wspólnych.
 Uwzględnij: sprawdziany i kartkówki, rzeczy do przyniesienia lub przygotowania, terminy, wycieczki, opłaty, zgody, zebrania, zmiany organizacyjne oraz zmiany w planie (zastępstwa, odwołane lekcje, zmiany godzin).
 Przy każdym dziecku wyróżnij osobno "Na co zwrócić uwagę" (rzeczy łatwe do przeoczenia: terminy zgód i opłat, zmiany w planie, niestandardowe wyposażenie), jeśli coś takiego jest. Pomiń sprawy nieistotne i już nieaktualne. Podawaj daty i dni tygodnia. Jeśli dla dziecka nic nie trzeba robić, napisz to jednym zdaniem.

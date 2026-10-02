@@ -32,17 +32,17 @@ test('parseGrades: proposed and final term grades, labelled by semester', () => 
   assert.equal(p.kind, 'proposed');
   assert.equal(f.kind, 'final');
   assert.equal(f.value, '4');
-  assert.match(formatGrade(f), /^🏁 Adam \(7B\) — Matematyka\nOcena roczna: 4$/);
-  assert.match(formatGrade({ ...p, term: 'semestralna' }), /Proponowana ocena semestralna: 5/);
+  assert.match(formatGrade(f), /^🏁 <b>Adam \(7B\)<\/b> — Matematyka\n🎯 Ocena roczna: <b>4<\/b>$/);
+  assert.match(formatGrade({ ...p, term: 'semestralna' }), /Proponowana ocena semestralna: <b>5<\/b>/);
 });
 
 test('formatGrade names the student, class and subject and shows weight without decimals', () => {
   const [g] = parseGrades({ Oceny: [{ Przedmiot: 'Matematyka', ProponowanaOcenaRoczna: '', OcenaRoczna: '', OcenyCzastkowe: [
     { Wpis: '5', Waga: 3.0, IdKolumny: 9, NazwaKolumny: 'Sprawdzian', KodKolumny: 'S', DataOceny: '02.10.2026', Nauczyciel: 'Kowalski Jan', IdOcenaPoprawiona: 8 }] }] }, adam);
   const out = formatGrade(g);
-  assert.match(out, /^🎓 Adam \(7B\) — Matematyka\n/);
-  assert.match(out, /Poprawa oceny: 5 {3}\(waga 3\)/);
-  assert.match(out, /Za: Sprawdzian \[S\]/);
+  assert.match(out, /^🎓 <b>Adam \(7B\)<\/b> — <b>Matematyka<\/b>\n/);
+  assert.match(out, /🔁 Poprawa oceny: <b>5<\/b> {3}\(waga 3\)/);
+  assert.match(out, /📌 Za: Sprawdzian \[S\]/);
 });
 
 const weekData = [{ SprawdzianyGroupedByDayList: [
@@ -65,9 +65,9 @@ test('parseExams flattens days, skips empty ones, cleans teacher and labels kind
 test('formatExam shows student, class, subject, weekday date and scope; omits empty lines', () => {
   const [a, , c] = parseExams(weekData, adam);
   const out = formatExam(a);
-  assert.match(out, /^📝 Adam \(7B\) — Kartkówka: Matematyka\n/);
-  assert.match(out, /Termin: poniedziałek, 28 września 2026/);
-  assert.match(out, /Zakres: Ułamki/);
+  assert.match(out, /^📝 <b>Adam \(7B\)<\/b> — Kartkówka: <b>Matematyka<\/b>\n/);
+  assert.match(out, /📅 Termin: <b>poniedziałek, 28 września 2026<\/b>/);
+  assert.match(out, /📚 Zakres: Ułamki/);
   assert.doesNotMatch(formatExam(c), /Zakres|Nauczyciel/);
 });
 
@@ -155,9 +155,9 @@ test('groupByDay makes one item per student and day, ordered by date', () => {
 
 test('formatPlan lists substitutions with the original teacher and cancellations with the reason', () => {
   const out = formatPlan(groupByDay(parsePlan(planData(), celina))[1]);
-  assert.match(out, /^🔄 Celina \(2B\) — piątek, 2 października 2026\n/);
-  assert.match(out, /• 1\. lekcja \(08:00–08:45\) Edukacja wczesnoszkolna, s\. 210: zastępstwo — Kamińska Barbara \(zamiast Lewandowska Anna\)/);
-  assert.match(out, /• 7\. lekcja \(14:00–14:45\) Rekreacja, s\. sg1: ❌ odwołana — nieobecność nauczyciela: uczniowie zwolnieni do domu/);
+  assert.match(out, /^🔄 <b>Celina \(2B\)<\/b> — <b>piątek, 2 października 2026<\/b>\n/);
+  assert.match(out, /🔄 <b>1\. lekcja<\/b> \(08:00–08:45\) Edukacja wczesnoszkolna, s\. 210\n {4}zastępstwo: <b>Kamińska Barbara<\/b> \(zamiast Lewandowska Anna\)/);
+  assert.match(out, /❌ <b>7\. lekcja<\/b> \(14:00–14:45\) Rekreacja, s\. sg1\n {4}<b>odwołana<\/b> — nieobecność nauczyciela: uczniowie zwolnieni do domu/);
   // same teacher in the span and the note: no "zamiast"
   const same = formatPlan(groupByDay([{ ...parsePlan(planData(), celina)[0], teacher: 'Kamińska Barbara' }])[0]);
   assert.doesNotMatch(same, /zamiast/);

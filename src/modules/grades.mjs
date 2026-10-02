@@ -1,5 +1,6 @@
 import { THREADS } from '../config.mjs';
 import { getUczen } from '../uczen.mjs';
+import { esc } from '../text.mjs';
 
 const num = (n) => String(Number(n)); // 1.00 -> "1"
 const blank = (s) => !s || !String(s).trim();
@@ -32,15 +33,15 @@ export function parseGrades(data, student) {
 }
 
 export function formatGrade(g) {
-  const who = `${g.student} (${g.className})`;
-  if (g.kind === 'proposed') return `📋 ${who} — ${g.subject}\nProponowana ocena ${g.term}: ${g.value}`;
-  if (g.kind === 'final') return `🏁 ${who} — ${g.subject}\nOcena ${g.term}: ${g.value}`;
+  const who = `<b>${esc(g.student)} (${esc(g.className)})</b>`;
+  if (g.kind === 'proposed') return `📋 ${who} — ${esc(g.subject)}\n📌 Proponowana ocena ${g.term}: <b>${esc(g.value)}</b>`;
+  if (g.kind === 'final') return `🏁 ${who} — ${esc(g.subject)}\n🎯 Ocena ${g.term}: <b>${esc(g.value)}</b>`;
   return [
-    `🎓 ${who} — ${g.subject}`,
-    `${g.corrected ? 'Poprawa oceny' : 'Ocena'}: ${g.value}   (waga ${num(g.weight)})`,
-    `Za: ${g.column}${g.code ? ` [${g.code}]` : ''}`,
-    `Nauczyciel: ${g.teacher}`,
-    `Data: ${g.date}`,
+    `🎓 ${who} — <b>${esc(g.subject)}</b>`,
+    `${g.corrected ? '🔁 Poprawa oceny' : '⭐ Ocena'}: <b>${esc(g.value)}</b>   (waga ${num(g.weight)})`,
+    `📌 Za: ${esc(g.column)}${g.code ? ` [${esc(g.code)}]` : ''}`,
+    `🧑‍🏫 Nauczyciel: ${esc(g.teacher)}`,
+    `📅 Data: ${esc(g.date)}`,
   ].join('\n');
 }
 

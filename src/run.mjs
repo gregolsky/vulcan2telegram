@@ -17,7 +17,7 @@ const sendExisting = args.has('--send-existing');
 const forceDigest = args.has('--digest');
 const only = [...args].find(a => a.startsWith('--only='))?.slice(7).split(',');
 
-const deliver = dryRun ? async (t, thread, opts) => console.log(`\n${'─'.repeat(60)}\n[topic ${thread || 'General'}]\n${t}`) : sendText;
+const deliver = dryRun ? async (t, thread) => console.log(`\n${'─'.repeat(60)}\n[topic ${thread || 'General'}]\n${t}`) : sendText;
 
 async function runModule(m, ms, session, persist) {
   const firstRun = !ms.initialized;
@@ -36,7 +36,7 @@ async function runModule(m, ms, session, persist) {
   // oldest first; items beyond the cap stay unseen and go out next run
   const batch = fresh.slice(0, MAX_PER_RUN);
   for (const item of batch) {
-    await deliver(m.format(item), m.thread());
+    await deliver(m.format(item), m.thread(), { html: true });
     item.keys.forEach(k => seen.add(k));
     ms.seen = [...seen];
     persist(); // after each send, so a crash never causes duplicates

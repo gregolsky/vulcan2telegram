@@ -1,5 +1,5 @@
 import { WIADOMOSCI_BASE, THREADS } from '../config.mjs';
-import { htmlToText } from '../text.mjs';
+import { htmlToText, esc } from '../text.mjs';
 
 const GROUP_WINDOW_MS = 120_000;
 
@@ -27,14 +27,14 @@ export function groupCopies(rows) {
 export function formatMessage(m) {
   const when = new Date(m.date).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', dateStyle: 'medium', timeStyle: 'short' });
   const head = [
-    `📬 ${m.subject || '(bez tematu)'}`,
-    `Od: ${m.sender}`,
-    `Dla: ${m.children.join(', ')}`,
-    `Data: ${when}`,
+    `📬 <b>${esc(m.subject || '(bez tematu)')}</b>`,
+    `👤 Od: <b>${esc(m.sender)}</b>`,
+    `🧒 Dla: ${esc(m.children.join(', '))}`,
+    `🕒 ${esc(when)}`,
   ].join('\n');
-  const body = m.body || '(brak treści)';
+  const body = esc(m.body || '(brak treści)');
   const att = m.attachments.length
-    ? '\n\n📎 Załączniki:\n' + m.attachments.map(a => `• ${a.name}\n  ${a.url}`).join('\n')
+    ? '\n\n📎 <b>Załączniki:</b>\n' + m.attachments.map(a => `• ${esc(a.name)}\n  ${esc(a.url)}`).join('\n')
     : '';
   return `${head}\n\n${body}${att}`;
 }

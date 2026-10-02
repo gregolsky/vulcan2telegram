@@ -74,9 +74,14 @@ test('chunk splits long text under the Telegram limit, preferring newlines', () 
 test('formatMessage includes header, body and attachments; handles empty body', () => {
   const base = { subject: 'Temat', sender: 'Jan', children: ['Adam', 'Beata'], date: '2026-09-30T19:18:17+02:00', body: 'Treść', attachments: [] };
   const out = formatMessage({ ...base, attachments: [{ name: 'a.pdf', url: 'https://x/a' }] });
-  assert.match(out, /📬 Temat\nOd: Jan\nDla: Adam, Beata\nData: /);
+  assert.match(out, /^📬 <b>Temat<\/b>\n👤 Od: <b>Jan<\/b>\n🧒 Dla: Adam, Beata\n🕒 /);
   assert.match(out, /Treść/);
-  assert.match(out, /• a\.pdf\n {2}https:\/\/x\/a/);
+  assert.match(out, /📎 <b>Załączniki:<\/b>\n• a\.pdf\n {2}https:\/\/x\/a/);
+  // message text from school is escaped so it cannot break Telegram's HTML
+  const esc = formatMessage({ ...base, subject: 'A & B <i>', body: '1 < 2 & <b>x</b>', attachments: [{ name: 'a&b.pdf', url: 'https://x/?a=1&b=2' }] });
+  assert.match(esc, /<b>A &amp; B &lt;i&gt;<\/b>/);
+  assert.match(esc, /1 &lt; 2 &amp; &lt;b&gt;x&lt;\/b&gt;/);
+  assert.match(esc, /a&amp;b\.pdf\n {2}https:\/\/x\/\?a=1&amp;b=2/);
   assert.match(formatMessage({ ...base, body: '' }), /\(brak treści\)/);
   assert.match(formatMessage({ ...base, subject: '' }), /\(bez tematu\)/);
 });

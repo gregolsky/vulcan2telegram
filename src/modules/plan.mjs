@@ -1,6 +1,6 @@
 import { THREADS } from '../config.mjs';
 import { getUczen } from '../uczen.mjs';
-import { htmlToText } from '../text.mjs';
+import { htmlToText, esc } from '../text.mjs';
 import { mondayOf } from './exams.mjs';
 
 const PLAN_WEEKS = 2; // this week and the next
@@ -63,20 +63,20 @@ export function groupByDay(changes) {
 function formatLesson(l) {
   const when = l.from && l.to ? ` (${l.from}–${l.to})` : '';
   const where = l.room ? `, s. ${l.room}` : '';
-  const head = `• ${l.lesson}. lekcja${when} ${l.subject}${where}:`;
+  const head = `<b>${esc(l.lesson)}. lekcja</b>${esc(when)} ${esc(l.subject)}${esc(where)}`;
   if (l.kind === 'sub') {
-    const was = l.teacher && l.teacher !== l.subTeacher ? ` (zamiast ${l.teacher})` : '';
-    return `${head} zastępstwo — ${l.subTeacher}${was}`;
+    const was = l.teacher && l.teacher !== l.subTeacher ? ` (zamiast ${esc(l.teacher)})` : '';
+    return `🔄 ${head}\n    zastępstwo: <b>${esc(l.subTeacher)}</b>${was}`;
   }
-  if (l.kind === 'cancel') return `${head} ❌ odwołana — ${l.note}`;
-  return `${head} ${l.note}`;
+  if (l.kind === 'cancel') return `❌ ${head}\n    <b>odwołana</b> — ${esc(l.note)}`;
+  return `⚠️ ${head}\n    ${esc(l.note)}`;
 }
 
 export function formatPlan(d) {
   const when = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('pl-PL', {
     timeZone: 'Europe/Warsaw', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
-  return [`🔄 ${d.student} (${d.className}) — ${when}`, ...d.lessons.map(formatLesson)].join('\n');
+  return [`🔄 <b>${esc(d.student)} (${esc(d.className)})</b> — <b>${esc(when)}</b>`, ...d.lessons.map(formatLesson)].join('\n');
 }
 
 async function fetch(session, { isSeen }) {
