@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isDue, buildPrompt, runClaude } from '../src/modules/digest.mjs';
+import { isDue, buildPrompt, runClaude, toTelegramHtml } from '../src/modules/digest.mjs';
 import { parsePlan, groupByDay } from '../src/modules/plan.mjs';
 
 const opts = { days: ['Wed', 'Sat'], hour: 18 };
@@ -55,4 +55,17 @@ test('runClaude rejects on non-zero exit, empty output, timeout and missing bina
   await assert.rejects(runClaude('x', { bin: fakeClaude('cat >/dev/null') }), /claude exited 0/);
   await assert.rejects(runClaude('x', { bin: fakeClaude('sleep 5'), timeoutMs: 100 }), /timed out/);
   await assert.rejects(runClaude('x', { bin: '/nonexistent/claude' }), /claude: /);
+});
+
+test('toTelegramHtml escapes markup from school messages and converts **bold** to <b>', () => {
+  assert.equal(toTelegramHtml('**Środa 7.10**: sprawdzian <b>x</b> & more'), '<b>Środa 7.10</b>: sprawdzian &lt;b&gt;x&lt;/b&gt; &amp; more');
+  assert.equal(toTelegramHtml('a **b** c **d**'), 'a <b>b</b> c <b>d</b>');
+  assert.equal(toTelegramHtml('unpaired ** stays'), 'unpaired ** stays');
+  assert.equal(toTelegramHtml('**a**\n**b**'), '<b>a</b>\n<b>b</b>'); // bold never spans lines
+});
+
+test('buildPrompt asks for emoji and bold only', () => {
+  const p = buildPrompt({ today: 'x', messages: [], exams: [] });
+  assert.match(p, /\*\*pogrubienie\*\*/);
+  assert.match(p, /emoji/);
 });

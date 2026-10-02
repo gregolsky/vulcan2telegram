@@ -15,10 +15,11 @@ export function chunk(text) {
   return out;
 }
 
-async function send(text, thread, attempt = 0) {
+async function send(text, thread, html, attempt = 0) {
   if (!TG_TOKEN || !TG_CHAT) throw new Error('TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set');
   const payload = { chat_id: TG_CHAT, text, disable_web_page_preview: true };
   if (thread) payload.message_thread_id = Number(thread);
+  if (html) payload.parse_mode = 'HTML';
   const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -27,12 +28,12 @@ async function send(text, thread, attempt = 0) {
   if (res.status === 429 && attempt < 3) {
     const j = await res.json().catch(() => ({}));
     await new Promise(r => setTimeout(r, ((j.parameters?.retry_after ?? 5) + 1) * 1000));
-    return send(text, thread, attempt + 1);
+    return send(text, thread, html, attempt + 1);
   }
   if (!res.ok) throw new Error(`Telegram ${res.status}: ${await res.text()}`);
 }
 
-/** Posts `text` to the given topic (message_thread_id); no thread = the group's General topic. */
-export async function sendText(text, thread) {
-  for (const part of chunk(text)) await send(part, thread);
+/** Posts `text` to the given topic (message_thread_id); no thread = the group's General topic. `html`: text uses Telegram's HTML subset. */
+export async function sendText(text, thread, { html = false } = {}) {
+  for (const part of chunk(text)) await send(part, thread, html);
 }

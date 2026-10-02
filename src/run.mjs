@@ -6,7 +6,7 @@ import inbox from './modules/inbox.mjs';
 import grades from './modules/grades.mjs';
 import exams from './modules/exams.mjs';
 import plan from './modules/plan.mjs';
-import { isDue, buildDigest } from './modules/digest.mjs';
+import { isDue, buildDigest, toTelegramHtml } from './modules/digest.mjs';
 
 const FAIL_ALERT_AT = 3;
 const MODULES = [inbox, grades, exams, plan];
@@ -17,7 +17,7 @@ const sendExisting = args.has('--send-existing');
 const forceDigest = args.has('--digest');
 const only = [...args].find(a => a.startsWith('--only='))?.slice(7).split(',');
 
-const deliver = dryRun ? async (t, thread) => console.log(`\n${'─'.repeat(60)}\n[topic ${thread || 'General'}]\n${t}`) : sendText;
+const deliver = dryRun ? async (t, thread, opts) => console.log(`\n${'─'.repeat(60)}\n[topic ${thread || 'General'}]\n${t}`) : sendText;
 
 async function runModule(m, ms, session, persist) {
   const firstRun = !ms.initialized;
@@ -79,7 +79,7 @@ async function main() {
     } else if (digestDue) {
       try {
         const text = await buildDigest(session);
-        await deliver(`📋 Podsumowanie na nadchodzący tydzień\n\n${text}`, '');
+        await deliver(`📋 <b>Podsumowanie na kolejne 7 dni</b>\n\n${toTelegramHtml(text)}`, '', { html: true });
         if (!dryRun) { state.digest = { last: new Date().toLocaleDateString('sv', { timeZone: 'Europe/Warsaw' }) }; persist(); }
         console.log(`${new Date().toISOString()} [digest] sent`);
       } catch (e) {
