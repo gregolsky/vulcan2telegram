@@ -72,9 +72,11 @@ async function main() {
         errors.push(`${m.name}: ${e.message}`);
       }
     }
-    // Weekly summary: Wed/Sat evening, once a day; `--digest` forces it. Skipped without a Claude token.
-    const digestDue = forceDigest || (!only && !dryRun && DIGEST_ENABLED && isDue(new Date(), state.digest?.last));
-    if (digestDue) {
+    // Weekly summary: Wed/Sat evening, once a day; `--digest` forces it. Without a Claude token it is skipped with a log line.
+    const digestDue = forceDigest || (!only && !dryRun && isDue(new Date(), state.digest?.last));
+    if (digestDue && !forceDigest && !DIGEST_ENABLED) {
+      console.log(`${new Date().toISOString()} [digest] skipped: CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) not set, weekly summary unavailable`);
+    } else if (digestDue) {
       try {
         const text = await buildDigest(session);
         await deliver(`📋 Podsumowanie na nadchodzący tydzień\n\n${text}`, '');
