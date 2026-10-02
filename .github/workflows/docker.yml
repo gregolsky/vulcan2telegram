@@ -43,10 +43,23 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
             type=semver,pattern={{version}}
+      # Smoke test of the real image before anything is pushed: Chromium must launch, claude must run.
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          load: true
+          tags: vulcan-smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test image
+        run: |
+          docker run --rm --init --ipc=host --entrypoint node vulcan-smoke --input-type=module \
+            -e "const { chromium } = await import('playwright'); const b = await chromium.launch(); console.log('chromium', b.version()); await b.close()"
+          docker run --rm --entrypoint claude vulcan-smoke --version
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

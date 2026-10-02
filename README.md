@@ -59,7 +59,9 @@ One-off commands: `docker compose run --rm --entrypoint node vulcan src/run.mjs 
   the same sender+subject within 2 minutes are merged into "Dla: Adam, Beata"); grades = student+column+value
   (a changed grade is announced again); exams = student+exam id; plan = student+date+lesson+change note (a new substitute teacher is announced again; past days are never sent).
 - `state.json`: per-module seen keys + `initialized`, plus a consecutive-failure count; a Telegram alert fires
-  after 3 failed runs in a row. One module failing does not stop the others.
-- Max 20 items per module per run (`MAX_PER_RUN`); the rest go out on the next run.
+  after 3 failed runs in a row (and then roughly daily while it keeps failing). An item Telegram permanently rejects
+  is skipped with an alert so it cannot block its topic; HTML that Telegram cannot parse is resent as plain text. One module failing does not stop the others.
+- Max 20 items per module per run (`MAX_PER_RUN`); the rest go out on the next run. The inbox is read page by page
+  (50 rows) until it reaches messages that were already seen, so a burst or a long downtime loses nothing.
 - Attachments are posted as SharePoint links; anyone in the group can open them.
 - `npm test` runs the unit tests (Node's built-in runner, no extra dependencies).
