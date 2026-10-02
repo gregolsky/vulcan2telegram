@@ -21,6 +21,11 @@ export const THREADS = {
 export const STATE_FILE = env('STATE_FILE', new URL('../state.json', import.meta.url).pathname);
 export const MAX_PER_RUN = Number(env('MAX_PER_RUN', 20));
 export const EXAMS_WEEKS = Number(env('EXAMS_WEEKS', 4));
+// Weekly summary via `claude -p` (Wednesday and Saturday, from DIGEST_HOUR Warsaw time) to the General topic.
+export const DIGEST_HOUR = Number(env('DIGEST_HOUR', 18));
+export const DIGEST_DAYS = env('DIGEST_DAYS', 'Wed,Sat').split(',').map(d => d.trim());
+export const DIGEST_MODEL = env('DIGEST_MODEL');
+export const DIGEST_ENABLED = Boolean(env('CLAUDE_CODE_OAUTH_TOKEN') || env('ANTHROPIC_API_KEY'));
 export const CHROMIUM_PATH = env('CHROMIUM_PATH') || undefined; // e.g. /usr/bin/chromium on the Pi
 
 export function assertConfig() {

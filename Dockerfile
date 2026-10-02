@@ -10,6 +10,9 @@ ENV NODE_ENV=production \
     STATE_FILE=/data/state.json \
     RUN_INTERVAL=1200
 
+# Claude Code CLI for the weekly digest (`claude -p`); authenticates with CLAUDE_CODE_OAUTH_TOKEN from .env
+RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+
 RUN chmod +x docker/loop.sh && mkdir /data && chown pwuser /data
 USER pwuser
 VOLUME /data

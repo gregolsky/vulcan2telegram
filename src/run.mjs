@@ -1,4 +1,4 @@
-import { STATE_FILE, MAX_PER_RUN, THREADS, assertConfig } from './config.mjs';
+import { STATE_FILE, MAX_PER_RUN, THREADS, DIGEST_ENABLED, assertConfig } from './config.mjs';
 import { openSession } from './session.mjs';
 import { sendText } from './telegram.mjs';
 import { loadState, saveState } from './state.mjs';
@@ -6,6 +6,7 @@ import inbox from './modules/inbox.mjs';
 import grades from './modules/grades.mjs';
 import exams from './modules/exams.mjs';
 import plan from './modules/plan.mjs';
+import { isDue, buildDigest } from './modules/digest.mjs';
 
 const FAIL_ALERT_AT = 3;
 const MODULES = [inbox, grades, exams, plan];
@@ -13,6 +14,7 @@ const MODULES = [inbox, grades, exams, plan];
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run');
 const sendExisting = args.has('--send-existing');
+const forceDigest = args.has('--digest');
 const only = [...args].find(a => a.startsWith('--only='))?.slice(7).split(',');
 
 const deliver = dryRun ? async (t, thread) => console.log(`\n${'─'.repeat(60)}\n[topic ${thread || 'General'}]\n${t}`) : sendText;
@@ -68,6 +70,18 @@ async function main() {
         await runModule(m, state.modules[m.name], session, persist);
       } catch (e) {
         errors.push(`${m.name}: ${e.message}`);
+      }
+    }
+    // Weekly summary: Wed/Sat evening, once a day; `--digest` forces it. Skipped without a Claude token.
+    const digestDue = forceDigest || (!only && !dryRun && DIGEST_ENABLED && isDue(new Date(), state.digest?.last));
+    if (digestDue) {
+      try {
+        const text = await buildDigest(session);
+        await deliver(`📋 Podsumowanie na nadchodzący tydzień\n\n${text}`, '');
+        if (!dryRun) { state.digest = { last: new Date().toLocaleDateString('sv', { timeZone: 'Europe/Warsaw' }) }; persist(); }
+        console.log(`${new Date().toISOString()} [digest] sent`);
+      } catch (e) {
+        errors.push(`digest: ${e.message}`);
       }
     }
   } catch (e) {

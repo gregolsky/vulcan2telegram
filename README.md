@@ -24,6 +24,14 @@ Grades, exams and plan stay off until their topic id is set. Free: Telegram Bot 
    Use `npm start -- --send-existing` to post the current items instead.
    `--only=grades,exams` runs selected modules; `npm run dry-run` prints without sending or saving.
 
+## Weekly summary
+On Wednesday and Saturday (from `DIGEST_HOUR`, default 18:00 Warsaw time) one extra step runs `claude -p` over the last
+7 days of messages and the next 7 days of tests, and posts "what is needed next week" per child to the General topic.
+It needs the Claude Code CLI (bundled in the Docker image; on a plain host `npm i -g @anthropic-ai/claude-code`) and is off
+unless `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) is set. Create the token with `claude setup-token` on a machine
+where you are logged in and put it in `.env`. Claude runs with no tools and the message text is passed as data only.
+Try it with `npm start -- --only=none --digest --dry-run` (prints instead of sending); `--digest` also forces a real send.
+
 ## Cron
 ```
 */20 * * * * cd ~/vulcan-telegram && flock -n /tmp/vulcan-tg.lock npm start >> run.log 2>&1

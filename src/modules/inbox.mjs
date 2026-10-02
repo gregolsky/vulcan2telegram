@@ -81,4 +81,25 @@ async function fetch(session, { isSeen, seedOnly }) {
   return { allKeys, fresh };
 }
 
+/** Messages from the last `days` days with bodies (newest inbox page only), oldest first. Read-only. */
+export async function recentMessages(session, days) {
+  await openHost(session);
+  const rows = await api(session.ctx, 'Odebrane?idLastWiadomosc=0&pageSize=50');
+  if (!Array.isArray(rows)) throw new Error('Inbox API returned no list');
+  const cutoff = Date.now() - days * 86_400_000;
+  const out = [];
+  for (const g of groupCopies(rows).filter(g => g.t >= cutoff)) {
+    const d = await api(session.ctx, `WiadomoscSzczegoly?apiGlobalKey=${encodeURIComponent(g.rows[0].apiGlobalKey)}`);
+    out.push({
+      sender: cleanSender(d.nadawca || g.sender),
+      subject: d.temat || g.subject,
+      date: d.data || g.rows[0].data,
+      children: [...new Set(g.rows.map(r => childName(r.skrzynka)))],
+      body: htmlToText(d.tresc),
+      attachments: (d.zalaczniki ?? []).map(a => a.nazwaPliku),
+    });
+  }
+  return out;
+}
+
 export default { name: 'inbox', thread: () => THREADS.inbox, alwaysOn: true, fetch, format: formatMessage };
