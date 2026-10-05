@@ -85,18 +85,23 @@ async function toMessage(session, g) {
 }
 
 /**
- * Reads the inbox (paging back until a fully seen page) and fetches bodies only for groups that are entirely unseen.
+ * Reads the inbox newest first, paging back until a page that contains an already seen message, and
+ * fetches bodies only for groups that are entirely unseen. Anything listed below the oldest seen row
+ * pre-dates what we have recorded (the first run only records the newest page) and is never posted.
  * A group where some copies were already seen (a copy for another child arrived late) is not
  * posted again; its new keys are just recorded (`silent`).
  */
 async function fetch(session, { isSeen }) {
-  const rows = await listRows(session, page => page.every(r => isSeen(r.apiGlobalKey)));
+  const rows = await listRows(session, page => page.some(r => isSeen(r.apiGlobalKey)));
+  const oldestSeen = rows.findLastIndex(r => isSeen(r.apiGlobalKey));
+  const position = new Map(rows.map((r, i) => [r.apiGlobalKey, i]));
   const fresh = [];
   for (const g of groupCopies(rows)) {
     const unseen = g.rows.filter(r => !isSeen(r.apiGlobalKey));
     if (!unseen.length) continue;
     if (unseen.length < g.rows.length) fresh.push({ keys: unseen.map(r => r.apiGlobalKey), silent: true });
-    else fresh.push(await toMessage(session, g));
+    else if (position.get(g.rows[0].apiGlobalKey) < oldestSeen || oldestSeen < 0) fresh.push(await toMessage(session, g));
+    else fresh.push({ keys: unseen.map(r => r.apiGlobalKey), silent: true }); // older than everything recorded
   }
   return { allKeys: rows.map(r => r.apiGlobalKey), fresh };
 }

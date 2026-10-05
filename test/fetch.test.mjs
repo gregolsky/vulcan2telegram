@@ -69,16 +69,34 @@ test('recentMessages keeps only the last N days, oldest first, with bodies', asy
   assert.equal(msgs[0].body, 'Treść');
 });
 
-test('inbox: pages back until a fully seen page, so a burst larger than one page is not lost', async () => {
+test('inbox: pages back until a page with a seen message, so a burst larger than one page is not lost', async () => {
   const mk = (from, n) => Array.from({ length: n }, (_, i) => row(`k${from - i}`, box('Ala'), { temat: `T${from - i}`, data: `2026-10-02T10:${String(59 - i).padStart(2, '0')}:00+02:00` }));
   const pages = { 0: mk(200, 50), 151: mk(151, 50), 102: mk(102, 50), 53: mk(53, 50) }; // keyed by the cursor: the previous page's last id, which the next page repeats
   const s = inboxSession(c => pages[c] ?? [], detail);
   const seen = new Set(Array.from({ length: 60 }, (_, i) => `k${i + 1}`)); // everything up to k60 is known
   const { fresh } = await inbox.fetch(s, { isSeen: k => seen.has(k) });
   const pageRequests = s.requests.filter(u => u.includes('Odebrane'));
-  assert.deepEqual(pageRequests.map(u => new URL(u).searchParams.get('idLastWiadomosc')), ['0', '151', '102', '53']);
+  assert.deepEqual(pageRequests.map(u => new URL(u).searchParams.get('idLastWiadomosc')), ['0', '151', '102']);
   assert.equal(fresh.length, 140); // k61..k200; the repeated cursor rows are not duplicated
   assert.equal(new Set(fresh.flatMap(f => f.keys)).size, 140);
+});
+
+test('inbox: a message arriving after the first run does not drag the pre-seed history along', async () => {
+  const mk = (from, n) => Array.from({ length: n }, (_, i) => row(`k${from - i}`, box('Ala'), { temat: `T${from - i}` }));
+  const pages = { 0: mk(151, 50), 102: mk(102, 50), 53: mk(53, 50) }; // k151 is new; k150..k101 is what the seed recorded
+  const s = inboxSession(c => pages[c] ?? [], detail);
+  const seen = new Set(Array.from({ length: 50 }, (_, i) => `k${150 - i}`));
+  const { fresh } = await inbox.fetch(s, { isSeen: k => seen.has(k) });
+  assert.equal(s.requests.filter(u => u.includes('Odebrane')).length, 1);
+  assert.deepEqual(fresh.map(f => f.keys), [['k151']]);
+  assert.equal(detailCalls(s).length, 1);
+
+  // an older page was read anyway (the seen row is not on page 1): its rows are recorded, not posted
+  const s2 = inboxSession(c => ({ 0: [...mk(151, 49), row('k102', box('Ala'))], 102: mk(102, 50) })[c] ?? [], detail);
+  const seen2 = new Set(['k102']);
+  const r2 = await inbox.fetch(s2, { isSeen: k => seen2.has(k) });
+  assert.equal(r2.fresh.filter(f => !f.silent).length, 49);
+  assert.equal(r2.fresh.filter(f => f.silent).length, 0);
 });
 
 test('inbox: a fully seen first page needs no further requests; paging is capped', async () => {
