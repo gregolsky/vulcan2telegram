@@ -61,7 +61,7 @@ One-off commands: `docker compose run --rm --entrypoint node vulcan src/run.mjs 
 - `state.json`: per-module seen keys + `initialized`, plus a consecutive-failure count; a Telegram alert fires
   after 3 failed runs in a row (and then roughly daily while it keeps failing). An item Telegram permanently rejects
   is skipped with an alert so it cannot block its topic; HTML that Telegram cannot parse is resent as plain text. One module failing does not stop the others.
-- Max 20 items per module per run (`MAX_PER_RUN`); the rest go out on the next run. The inbox is read page by page
+- Max 20 items per module per run (`MAX_PER_RUN`); the rest go out on the next run. If more than `FLOOD_LIMIT` (50) new items show up in one run, they are recorded as seen and an alert is sent instead (guards against changed ids or lost state). The inbox is read page by page
   (50 rows) until it reaches messages that were already seen, so a burst or a long downtime loses nothing.
 - Attachments are posted as SharePoint links; anyone in the group can open them.
 - `npm test` runs the unit tests (Node's built-in runner, no extra dependencies).

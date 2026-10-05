@@ -20,6 +20,8 @@ export const THREADS = {
 
 export const STATE_FILE = env('STATE_FILE', new URL('../state.json', import.meta.url).pathname);
 export const MAX_PER_RUN = Number(env('MAX_PER_RUN', 20));
+// More new items than this at once are recorded instead of sent (ids changed, state lost); see runner.mjs.
+export const FLOOD_LIMIT = Number(env('FLOOD_LIMIT', 50));
 export const EXAMS_WEEKS = Number(env('EXAMS_WEEKS', 4));
 // Weekly summary via `claude -p` (Wednesday and Saturday, from DIGEST_HOUR Warsaw time) to the General topic.
 export const DIGEST_HOUR = Number(env('DIGEST_HOUR', 18));

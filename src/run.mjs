@@ -1,4 +1,4 @@
-import { STATE_FILE, MAX_PER_RUN, THREADS, DIGEST_ENABLED, assertConfig } from './config.mjs';
+import { STATE_FILE, MAX_PER_RUN, FLOOD_LIMIT, THREADS, DIGEST_ENABLED, assertConfig } from './config.mjs';
 import { openSession } from './session.mjs';
 import { sendText } from './telegram.mjs';
 import { loadState, saveState } from './state.mjs';
@@ -29,10 +29,18 @@ if (args.has('--test-telegram')) {
   console.log('sent');
 } else {
   assertConfig();
-  const state = loadState(STATE_FILE);
+  let state;
+  try {
+    state = loadState(STATE_FILE);
+  } catch (e) {
+    // Do not overwrite a damaged file; without an alert the bot would just fail silently every run.
+    console.error(`${new Date().toISOString()} ERROR: cannot read ${STATE_FILE}: ${e.message}`);
+    await alert(`cannot read the state file ${STATE_FILE}: ${e.message}`).catch(() => {});
+    process.exit(1);
+  }
   const persist = flags.dryRun ? () => {} : () => saveState(STATE_FILE, state);
   process.exitCode = await runAll({
-    modules: MODULES, state, persist, deliver, alert, openSession, flags, maxPerRun: MAX_PER_RUN,
+    modules: MODULES, state, persist, deliver, alert, openSession, flags, maxPerRun: MAX_PER_RUN, floodLimit: FLOOD_LIMIT,
     digest: (session, now) => maybeDigest({
       session, state, persist, deliver, now, dryRun: flags.dryRun, skip: Boolean(flags.only),
       force: args.has('--digest'), enabled: DIGEST_ENABLED, log: stamp(console.log),

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import inbox, { recentMessages } from '../src/modules/inbox.mjs';
+import grades from '../src/modules/grades.mjs';
+import { runModule } from '../src/runner.mjs';
 import exams from '../src/modules/exams.mjs';
 import plan, { parsePlan } from '../src/modules/plan.mjs';
 
@@ -202,4 +204,40 @@ test('getUczen does the SSO hop before opening the app and loads only once per s
 
 test('getUczen fails clearly when no anti-forgery token is found', async () => {
   await assert.rejects(getUczen(fakeBrowserSession({ token: null })), /no anti-forgery token/);
+});
+
+test('runModule + inbox: a seed run followed by one new message delivers exactly that message (the 352-message regression)', async () => {
+  const mk = (from, n) => Array.from({ length: n }, (_, i) => row(`k${from - i}`, box('Ala'), { temat: `T${from - i}` }));
+  let newest = 150;
+  const pages = () => ({ 0: mk(newest, 50), [newest - 49]: mk(newest - 49, 50), [newest - 99]: mk(newest - 99, 50) });
+  const ms = { seen: [], initialized: false };
+  const sent = [];
+  const deps = { deliver: async (t) => sent.push(t), alert: async () => {}, persist() {}, maxPerRun: 20, floodLimit: 50, now: new Date(), log() {} };
+
+  await runModule(inbox, ms, inboxSession(c => pages()[c] ?? [], detail), deps);
+  assert.equal(ms.seen.length, 50); // the seed recorded only the newest page
+  assert.deepEqual(sent, []);
+
+  newest = 151; // one new message arrives
+  const s = inboxSession(c => pages()[c] ?? [], detail);
+  await runModule(inbox, ms, s, deps);
+  assert.equal(sent.length, 1);
+  assert.equal(s.requests.filter(u => u.includes('Odebrane')).length, 1);
+});
+
+test('grades: only unseen grades are returned, oldest first; a changed value is a new item', async () => {
+  const data = { Oceny: [{ Przedmiot: 'Mat', OcenyCzastkowe: [
+    { IdKolumny: 1, Wpis: '5', DataOceny: '03.10.2026', Waga: 3 },
+    { IdKolumny: 2, Wpis: '4', DataOceny: '01.10.2026', Waga: 1 },
+    { IdKolumny: 3, Wpis: '3', DataOceny: '02.10.2026', Waga: 1 },
+  ] }] };
+  const student = { firstName: 'Ala', className: '4A', idUczen: 7, okres: 9 };
+  const session = { uczen: Promise.resolve({ students: [student], call: async () => data }) };
+  const { allKeys, fresh } = await grades.fetch(session, { isSeen: k => k === 'g:7:3:3' });
+  assert.deepEqual(allKeys, ['g:7:1:5', 'g:7:2:4', 'g:7:3:3']);
+  assert.deepEqual(fresh.map(g => g.date), ['01.10.2026', '03.10.2026']);
+
+  data.Oceny[0].OcenyCzastkowe[2].Wpis = '4'; // the teacher changed a grade
+  const again = await grades.fetch(session, { isSeen: k => k === 'g:7:3:3' });
+  assert.ok(again.fresh.some(g => g.keys[0] === 'g:7:3:4'));
 });

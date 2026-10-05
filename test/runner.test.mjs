@@ -192,3 +192,37 @@ test('fetch receives the injected time', async () => {
   await runAll({ ...h.deps, modules: [m] });
   assert.equal(m.calls[0].now.toISOString(), '2026-10-03T12:00:00.000Z');
 });
+
+test('flood guard: more new items than the limit are recorded and alerted, not sent', async () => {
+  const h = harness();
+  h.state.modules.m = { seen: ['old'], initialized: true };
+  h.deps.floodLimit = 3;
+  const items = ['a', 'b', 'c', 'd'].map(k => item(k));
+  assert.equal(await runAll({ ...h.deps, modules: [mod('m', { items })] }), 0);
+  assert.deepEqual(h.sent, []);
+  assert.deepEqual(seenOf(h, 'm'), ['old', 'a', 'b', 'c', 'd']);
+  assert.equal(h.alerts.length, 1);
+  assert.match(h.alerts[0], /\[m\] 4 new items at once \(limit 3\)/);
+});
+
+test('flood guard: exactly the limit is delivered, silent items do not count, --send-existing bypasses it', async () => {
+  const h = harness();
+  h.state.modules.m = { seen: [], initialized: true };
+  h.deps.floodLimit = 2;
+  await runAll({ ...h.deps, modules: [mod('m', { items: [item('a'), item('b'), item('s1', { silent: true }), item('s2', { silent: true })] })] });
+  assert.deepEqual(h.sent.map(s => s[0]), ['m:a', 'm:b']);
+  assert.deepEqual(h.alerts, []);
+
+  const h2 = harness();
+  h2.deps.floodLimit = 1;
+  h2.deps.flags = { sendExisting: true };
+  await runAll({ ...h2.deps, modules: [mod('m', { items: [item('a'), item('b'), item('c')] })] });
+  assert.equal(h2.sent.length, 3);
+});
+
+test('seen keys still visible are moved last, so trimming never drops what the source still lists', async () => {
+  const h = harness();
+  h.state.modules.m = { seen: ['visible', 'gone1', 'gone2'], initialized: true };
+  await runAll({ ...h.deps, modules: [mod('m', { items: [item('visible'), item('new')] })] });
+  assert.deepEqual(seenOf(h, 'm'), ['gone1', 'gone2', 'visible', 'new']);
+});
